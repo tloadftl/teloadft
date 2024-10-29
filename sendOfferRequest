@@ -1,0 +1,117 @@
+import { getFrontData } from "../data/getFrontData.js";
+import { correctAlert, incorrectAlert } from "../../../js/alerts/showAlert.js";
+
+export function putTPOQuote(tpoID, price, currency) {
+    let validCurrencies = ["EUR", "PLN", "GBP"];
+
+    /**
+     * I ensure that all data sent to createBody() complies with the guidelines of the Transporeon documentation.
+     */
+    // Currency validation
+    if (!validCurrencies.includes(currency)) {
+        incorrectAlert('Błędna waluta', 'error');
+        return;
+    }
+
+    // Price validation
+    if (!/^\d+$/.test(price) || price < 1 || price > 59999) {
+        incorrectAlert('Cena musi być liczbą od 1 do 59999.');
+        return;
+    }
+
+    // tpoID validation
+    if (!/^\d+$/.test(tpoID)) {
+        incorrectAlert('tpoID musi być liczbą.');
+        return;
+    }
+
+    return new Promise((resolve, reject) => {
+        /**
+         * Catch auth Data. [ username, password]
+         */
+        getFrontData()
+            .then(function (authResponse) {
+                /**
+                 * Create request parts
+                 */
+                const headers = createAuthHeaders(authResponse);
+                const body = createBody(parseInt(tpoID, 10), parseInt(price, 10), currency);
+                /**
+                 * execute!
+                 */
+                sendRequest(headers, body)
+                    .then(response => {
+                        correctAlert('Pomyślnie wysłano ofertę', 'completed');
+                        $('.pricing-modal').removeClass('active');
+                        $('#overlay').removeClass('active');
+                        resolve(response);
+                    })
+                    .catch(error => {
+                        console.error('Błąd podczas wysyłania żądania lub zapisu danych:', error.message);
+                        reject(error);
+                        incorrectAlert('Błąd wysyłania oferty.');
+                    });
+            })
+            .catch(error => {
+                incorrectAlert('Błąd wysyłania oferty.');
+                console.error('Błąd podczas pobierania danych autoryzacyjnych:', error);
+                reject(error);
+            });
+    });
+}
+
+/**
+ * Function for creating authorization headers
+ */
+function createAuthHeaders(authResponse) {
+    const credentials = `${authResponse.user}:${authResponse.password}`;
+    const encodedAuthString = btoa(credentials);
+
+    return {
+        'Authorization': 'Basic ' + encodedAuthString,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
+}
+
+/**
+ * Function for creating body values
+ */
+function createBody(tpoID, price, currency) {
+    return JSON.stringify({
+        'amount': price,
+        'currency': currency,
+        'transport_id': tpoID
+    });
+}
+
+/**
+ * Function for sending a request to the API using AJAX
+ */
+function sendRequest(headers, body) {
+    /**
+     * URL using server proxy for sollving CORS problems
+     * /transporeon 
+     * is
+     * https://xch.transporeon.com/carrier_interface/openapi/v1'
+     */
+    const url = `/transporeon/offer`;
+
+    return new Promise((resolve, reject) => {
+        $.ajax({
+            url: url,
+            method: 'PUT',
+            headers: headers,
+            contentType: 'application/json',
+            data: body,
+            success: function(data) {
+                console.log('Sukces:', data);
+                resolve(data);
+            },
+            error: function(xhr) {
+                console.error(`Failed request. Status: ${xhr.status}, ${xhr.statusText}, Body: ${xhr.responseText}`);
+                reject(new Error(`Failed to put offer. Server responded with: ${xhr.status} ${xhr.statusText} - ${xhr.responseText}`));
+            }
+        });
+    });
+}
